@@ -12,7 +12,7 @@ namespace {
 // Decodes candidate k for one sample, verifies it, and updates stats.
 // Returns true when the candidate passes.
 bool try_candidate(const Model& model, const Sample& s, const SolveOpts& o, uint64_t sample_idx, int k,
-                   SampleStats& st) {
+                   SampleStats& st, Worker& worker) {
   DecodeOpts d;
   d.mode = o.mode;
   d.max_new = o.max_new;
@@ -32,7 +32,7 @@ bool try_candidate(const Model& model, const Sample& s, const SolveOpts& o, uint
     candidate = dec.text;
   }
   st.verify_calls++;
-  return run_test(o.verify, candidate, s.test);
+  return worker.run(candidate, s.test);
 }
 
 }  // namespace
@@ -43,11 +43,12 @@ std::vector<SampleStats> solve(const Model& model, const std::vector<Sample>& sa
   std::vector<std::thread> pool;
   for (int w = 0; w < o.workers; ++w) {
     pool.emplace_back([&] {
+      Worker worker(o.verify);
       for (size_t i; (i = next.fetch_add(1)) < samples.size();) {
         SampleStats& st = out[i];
         auto t0 = std::chrono::steady_clock::now();
         for (int k = 0; k < o.k; ++k) {
-          if (try_candidate(model, samples[i], o, i, k, st)) {
+          if (try_candidate(model, samples[i], o, i, k, st, worker)) {
             st.pass4 = true;
             st.pass1 = k == 0;
             break;

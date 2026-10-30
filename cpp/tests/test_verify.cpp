@@ -15,27 +15,36 @@ VerifyOpts opts() {
   return o;
 }
 
+bool run_once(const std::string& src, const std::string& test) { return Worker(opts()).run(src, test); }
+
 }  // namespace
 
-TEST(Verify, PassingCandidate) { EXPECT_TRUE(run_test(opts(), kAdd, kTest)); }
+TEST(Verify, PassingCandidate) { EXPECT_TRUE(run_once(kAdd, kTest)); }
 
-TEST(Verify, FailingAssertion) {
-  EXPECT_FALSE(run_test(opts(), "def f(a, b):\n    return a - b\n", kTest));
-}
+TEST(Verify, FailingAssertion) { EXPECT_FALSE(run_once("def f(a, b):\n    return a - b\n", kTest)); }
 
-TEST(Verify, SyntaxErrorCountsAsFailure) {
-  EXPECT_FALSE(run_test(opts(), "def f(a, b) return a + b\n", kTest));
+TEST(Verify, SyntaxErrorCountsAsFailure) { EXPECT_FALSE(run_once("def f(a, b) return a + b\n", kTest)); }
+
+TEST(Verify, CandidateOutputDoesNotFakeAReply) {
+  EXPECT_FALSE(run_once("def f(a, b):\n    print('1' * 100)\n    return a - b\n", kTest));
 }
 
 TEST(Verify, TimeoutKillsRunawayCandidate) {
   auto t0 = std::chrono::steady_clock::now();
-  EXPECT_FALSE(run_test(opts(), "def f(a, b):\n    while True: pass\n", kTest));
+  EXPECT_FALSE(run_once("def f(a, b):\n    while True: pass\n", kTest));
   double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
   EXPECT_LT(s, 3.5);  // 2 s limit plus scheduling slack
 }
 
 TEST(Verify, MemoryCapFailsAllocation) {
-  EXPECT_FALSE(run_test(opts(), "def f(a, b):\n    x = bytearray(1 << 30)\n    return a + b\n", kTest));
+  EXPECT_FALSE(run_once("def f(a, b):\n    x = bytearray(1 << 30)\n    return a + b\n", kTest));
+}
+
+TEST(Verify, WorkerPersistsAcrossTestsAndRespawnsAfterTimeout) {
+  Worker w(opts());
+  for (int i = 0; i < 20; ++i) EXPECT_TRUE(w.run(kAdd, kTest)) << i;
+  EXPECT_FALSE(w.run("def f(a, b):\n    while True: pass\n", kTest));
+  EXPECT_TRUE(w.run(kAdd, kTest));
 }
 
 TEST(Verify, PoolPreservesOrderAtAnyWorkerCount) {
