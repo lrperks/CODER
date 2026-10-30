@@ -27,7 +27,12 @@ add_library(vedit_core STATIC
   cpp/edits/edits.cpp
   cpp/edits/prompt.cpp
   cpp/runtime/nfa.cpp
-  cpp/runtime/grammar.cpp)
+  cpp/runtime/grammar.cpp
+  cpp/runtime/matmul.cpp
+  cpp/runtime/model.cpp
+  cpp/runtime/decode.cpp
+  cpp/verify/verify.cpp
+  cpp/verify/solve.cpp)
 target_include_directories(vedit_core PUBLIC cpp)
 target_link_libraries(vedit_core PUBLIC tree_sitter tree_sitter_python)
 
@@ -41,7 +46,7 @@ option(VEDIT_BUILD_TESTS "Build GoogleTest unit tests (libgtest-dev 1.14.0)" ON)
 if(VEDIT_BUILD_TESTS)
   enable_testing()
   find_package(GTest REQUIRED)
-  add_executable(vedit_tests cpp/tests/test_edits.cpp cpp/tests/test_grammar.cpp)
+  add_executable(vedit_tests cpp/tests/test_edits.cpp cpp/tests/test_grammar.cpp cpp/tests/test_matmul.cpp)
   target_link_libraries(vedit_tests PRIVATE vedit_core GTest::gtest_main)
   add_test(NAME vedit_tests COMMAND vedit_tests)
 endif()

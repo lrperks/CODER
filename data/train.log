@@ -1,0 +1,8 @@
+target=edit params=903424 train=3200
+epoch 1 loss 2.4022 (43s)
+epoch 2 loss 1.1827 (42s)
+epoch 3 loss 0.7512 (44s)
+epoch 4 loss 0.5114 (56s)
+epoch 5 loss 0.4087 (56s)
+epoch 6 loss 0.3534 (45s)
+epoch 7 loss 0.3204 (45s)
