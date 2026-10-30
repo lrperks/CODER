@@ -77,7 +77,7 @@ PYBIND11_MODULE(vedit, m) {
     o.verify.runner = runner;
     std::vector<py::tuple> res;
     for (const SampleStats& st : solve(model, samples, o)) {
-      res.push_back(py::make_tuple(st.pass1, st.pass4, st.tokens, st.forced, st.verify_calls));
+      res.push_back(py::make_tuple(st.pass1, st.pass4, st.tokens, st.forced, st.verify_calls, st.wall_s));
     }
     return res;
   }, py::call_guard<py::gil_scoped_release>());

@@ -21,7 +21,8 @@ constexpr char kSep = '\x1e';
 bool run_test(const VerifyOpts& opts, const std::string& src, const std::string& test) {
   signal(SIGPIPE, SIG_IGN);  // the child may exit before reading its input
   int in[2];
-  if (pipe(in) != 0) return false;
+  // CLOEXEC: a child spawned by another thread must not inherit our write end, or it never sees EOF.
+  if (pipe2(in, O_CLOEXEC) != 0) return false;
   posix_spawn_file_actions_t fa;
   posix_spawn_file_actions_init(&fa);
   posix_spawn_file_actions_adddup2(&fa, in[0], 0);
@@ -32,7 +33,7 @@ bool run_test(const VerifyOpts& opts, const std::string& src, const std::string&
                   const_cast<char*>(opts.runner.c_str()), const_cast<char*>(opts.test_name.c_str()),
                   nullptr};
   pid_t pid;
-  int rc = posix_spawn(&pid, opts.python.c_str(), &fa, nullptr, argv, environ);
+  int rc = posix_spawnp(&pid, opts.python.c_str(), &fa, nullptr, argv, environ);  // p: finds "python3" on PATH
   posix_spawn_file_actions_destroy(&fa);
   close(in[0]);
   if (rc != 0) {
@@ -64,7 +65,7 @@ bool run_test(const VerifyOpts& opts, const std::string& src, const std::string&
 }
 
 std::vector<bool> run_pool(const VerifyOpts& opts, const std::vector<Job>& jobs, int workers) {
-  std::vector<bool> pass(jobs.size(), false);
+  std::vector<char> pass(jobs.size(), 0);  // not vector<bool>: workers write neighbouring elements
   std::atomic<size_t> next{0};
   std::vector<std::thread> pool;
   for (int w = 0; w < workers; ++w) {
@@ -75,5 +76,5 @@ std::vector<bool> run_pool(const VerifyOpts& opts, const std::vector<Job>& jobs,
     });
   }
   for (auto& t : pool) t.join();
-  return pass;
+  return std::vector<bool>(pass.begin(), pass.end());
 }

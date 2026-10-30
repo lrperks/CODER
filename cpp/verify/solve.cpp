@@ -1,6 +1,7 @@
 #include "verify/solve.h"
 
 #include <atomic>
+#include <chrono>
 #include <thread>
 
 #include "edits/edits.h"
@@ -44,6 +45,7 @@ std::vector<SampleStats> solve(const Model& model, const std::vector<Sample>& sa
     pool.emplace_back([&] {
       for (size_t i; (i = next.fetch_add(1)) < samples.size();) {
         SampleStats& st = out[i];
+        auto t0 = std::chrono::steady_clock::now();
         for (int k = 0; k < o.k; ++k) {
           if (try_candidate(model, samples[i], o, i, k, st)) {
             st.pass4 = true;
@@ -51,6 +53,7 @@ std::vector<SampleStats> solve(const Model& model, const std::vector<Sample>& sa
             break;
           }
         }
+        st.wall_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
       }
     });
   }

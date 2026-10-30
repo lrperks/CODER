@@ -18,6 +18,7 @@ struct SampleStats {
   int tokens = 0;      // characters emitted, all candidates tried
   int forced = 0;      // of which from the forced-token shortcut
   int verify_calls = 0;
+  double wall_s = 0.0;  // decode and verify time for this sample
 };
 
 struct SolveOpts {
