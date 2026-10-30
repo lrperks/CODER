@@ -1,0 +1,23 @@
+{
+  "model": "random-init-seed0",
+  "tokens": 200,
+  "runs": 3,
+  "prompt_bytes": 57,
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "torch": "2.5.1+cpu",
+  "python": "3.13.17",
+  "cxx_flags": "-O3 -march=native -DNDEBUG",
+  "cpp_tok_s": 7722.853359554363,
+  "pytorch_tok_s": 1214.3269007848446,
+  "ratio": 6.359781171415146,
+  "cpp_runs_s": [
+    0.02589716399995723,
+    0.026960221999956957,
+    0.0252832789999502
+  ],
+  "pytorch_runs_s": [
+    0.17941324700007044,
+    0.15050541300001896,
+    0.16470029599997815
+  ]
+}

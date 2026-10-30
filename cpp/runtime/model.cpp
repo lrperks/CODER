@@ -1,5 +1,7 @@
 #include "runtime/model.h"
 
+#include <immintrin.h>
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -43,14 +45,56 @@ void layernorm(const float* x, const std::vector<float>& g, const std::vector<fl
   }
 }
 
+// Eight independent lanes so the compiler can vectorize without -ffast-math.
 float dot_f32(const float* a, const float* b, int n) {
+  float lane[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+  int i = 0;
+  for (; i + 8 <= n; i += 8) {
+    for (int j = 0; j < 8; ++j) lane[j] += a[i + j] * b[i + j];
+  }
   float acc = 0.0f;
-  for (int i = 0; i < n; ++i) acc += a[i] * b[i];
+  for (int j = 0; j < 8; ++j) acc += lane[j];
+  for (; i < n; ++i) acc += a[i] * b[i];
   return acc;
 }
 
 float gelu(float x) {
   return 0.5f * x * (1.0f + std::tanh(0.7978845608f * (x + 0.044715f * x * x * x)));
+}
+
+// Same tanh-GELU via 0.5x(1+tanh u) = x / (1 + exp(-2u)), with an AVX2 exp (Cephes polynomial).
+__attribute__((target("avx2,fma"))) __m256 exp256(__m256 x) {
+  x = _mm256_min_ps(_mm256_max_ps(x, _mm256_set1_ps(-88.3762626647949f)), _mm256_set1_ps(88.3762626647949f));
+  __m256 fx = _mm256_floor_ps(_mm256_fmadd_ps(x, _mm256_set1_ps(1.44269504088896341f), _mm256_set1_ps(0.5f)));
+  x = _mm256_sub_ps(x, _mm256_mul_ps(fx, _mm256_set1_ps(0.693359375f)));
+  x = _mm256_sub_ps(x, _mm256_mul_ps(fx, _mm256_set1_ps(-2.12194440e-4f)));
+  __m256 y = _mm256_set1_ps(1.9875691500E-4f);
+  y = _mm256_fmadd_ps(y, x, _mm256_set1_ps(1.3981999507E-3f));
+  y = _mm256_fmadd_ps(y, x, _mm256_set1_ps(8.3334519073E-3f));
+  y = _mm256_fmadd_ps(y, x, _mm256_set1_ps(4.1665795894E-2f));
+  y = _mm256_fmadd_ps(y, x, _mm256_set1_ps(1.6666665459E-1f));
+  y = _mm256_fmadd_ps(y, x, _mm256_set1_ps(5.0000001201E-1f));
+  y = _mm256_fmadd_ps(y, _mm256_mul_ps(x, x), _mm256_add_ps(x, _mm256_set1_ps(1.0f)));
+  __m256i n = _mm256_slli_epi32(_mm256_add_epi32(_mm256_cvttps_epi32(fx), _mm256_set1_epi32(127)), 23);
+  return _mm256_mul_ps(y, _mm256_castsi256_ps(n));
+}
+
+__attribute__((target("avx2,fma"))) void exp_avx2(float* x, int n) {
+  int i = 0;
+  for (; i + 8 <= n; i += 8) _mm256_storeu_ps(x + i, exp256(_mm256_loadu_ps(x + i)));
+  for (; i < n; ++i) x[i] = std::exp(x[i]);
+}
+
+__attribute__((target("avx2,fma"))) void gelu_avx2(float* f, int n) {
+  const __m256 a = _mm256_set1_ps(-2.0f * 0.7978845608f), b = _mm256_set1_ps(-2.0f * 0.7978845608f * 0.044715f);
+  const __m256 one = _mm256_set1_ps(1.0f);
+  int i = 0;
+  for (; i + 8 <= n; i += 8) {
+    __m256 x = _mm256_loadu_ps(f + i);
+    __m256 e = exp256(_mm256_mul_ps(x, _mm256_fmadd_ps(_mm256_mul_ps(x, x), b, a)));
+    _mm256_storeu_ps(f + i, _mm256_div_ps(x, _mm256_add_ps(one, e)));
+  }
+  for (; i < n; ++i) f[i] = gelu(f[i]);
 }
 
 }  // namespace
@@ -125,11 +169,14 @@ void Model::forward(Cache& c, const std::vector<int>& toks, float* logits, bool 
           score[s] = dot_f32(q, &c.k[l][s * d + hd * dh], dh) * scale;
           if (score[s] > mx) mx = score[s];
         }
-        float sum = 0.0f;
-        for (int s = 0; s <= q_pos; ++s) {
-          score[s] = std::exp(score[s] - mx);
-          sum += score[s];
+        for (int s = 0; s <= q_pos; ++s) score[s] -= mx;
+        if (avx2) {
+          exp_avx2(score.data(), q_pos + 1);
+        } else {
+          for (int s = 0; s <= q_pos; ++s) score[s] = std::exp(score[s]);
         }
+        float sum = 0.0f;
+        for (int s = 0; s <= q_pos; ++s) sum += score[s];
         float* out = &att[t * d + hd * dh];
         for (int i = 0; i < dh; ++i) out[i] = 0.0f;
         for (int s = 0; s <= q_pos; ++s) {
@@ -143,7 +190,11 @@ void Model::forward(Cache& c, const std::vector<int>& toks, float* logits, bool 
     for (size_t i = 0; i < x.size(); ++i) x[i] += proj[i];
     layernorm(x.data(), L.ln2_g, L.ln2_b, T, d, h.data());
     linear(L.fc1, h.data(), T, f.data(), avx2);
-    for (float& v : f) v = gelu(v);
+    if (avx2) {
+      gelu_avx2(f.data(), static_cast<int>(f.size()));
+    } else {
+      for (float& v : f) v = gelu(v);
+    }
     linear(L.fc2, f.data(), T, proj.data(), avx2);
     for (size_t i = 0; i < x.size(); ++i) x[i] += proj[i];
   }
