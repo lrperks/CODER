@@ -3,3 +3,4 @@ __pycache__/
 data/*.jsonl
 data/*.pt
 *.bin.tmp
+data/*.log
