@@ -46,11 +46,15 @@ PYBIND11_MODULE(vedit, m) {
     o.seed = seed;
     o.stop_at_eos = stop_at_eos;
     o.avx2 = avx2;
-    Decoded d = decode(model, prompt, o);
+    Decoded d;
+    {
+      py::gil_scoped_release release;  // only the C++ work; building the tuple needs the GIL
+      d = decode(model, prompt, o);
+    }
     return py::make_tuple(d.text, d.tokens, d.forced);
   }, py::arg("model"), py::arg("prompt"), py::arg("mode"), py::arg("max_new"),
      py::arg("temperature") = 0.0f, py::arg("seed") = 0, py::arg("stop_at_eos") = true,
-     py::arg("avx2") = true, py::call_guard<py::gil_scoped_release>());
+     py::arg("avx2") = true);
   m.def("cpu_has_avx2", &cpu_has_avx2);
   m.def("run_tests", [](const std::vector<std::pair<std::string, std::string>>& jobs, int workers,
                         const std::string& python, const std::string& runner) {
