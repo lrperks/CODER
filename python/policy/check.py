@@ -22,6 +22,21 @@ def heldout_prompts(name, n=100, seed=0):
     return [vedit.render_prompt(r["test"], r["buggy"], name == "edit").encode() for r in rows]
 
 
+def max_new_tokens(name):
+    """Generation budget. The baseline may use the context left after the longest held-out prompt."""
+    if name == "edit":
+        return 160
+    rows = [json.loads(line) for line in SAMPLES.read_text().splitlines()]
+    longest = max(len(vedit.render_prompt(r["test"], r["buggy"], False))
+                  for r in rows if r["split"] == "heldout")
+    return reference_max_len() - longest
+
+
+def reference_max_len():
+    from python.policy.model import CFG
+    return CFG["max_len"]
+
+
 def parity(name, n=100):
     """Greedy outputs must match token-for-token. Returns (mismatches, total)."""
     model_path = ROOT / "results" / "models" / f"{name}.bin"
@@ -29,7 +44,7 @@ def parity(name, n=100):
     ref = reference.load_reference(name)
     edit = name == "edit"
     mode = vedit.Mode.Edit if edit else vedit.Mode.Free
-    max_new = 160 if edit else 400
+    max_new = max_new_tokens(name)
     bad = []
     prompts = heldout_prompts(name, n)
     for i, p in enumerate(prompts):

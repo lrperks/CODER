@@ -14,7 +14,7 @@ from pathlib import Path
 import torch
 
 import vedit
-from python.policy import reference
+from python.policy import check, reference
 from python.policy import check
 from python.policy.model import CFG
 from python.bench_verify import verify_throughput
@@ -26,7 +26,7 @@ PY = sys.executable
 RESULTS = ROOT / "results"
 K = 4
 # Baseline budget fills the 640-token context after the longest held-out prompt (267 chars).
-MAX_NEW = {"edit": 160, "baseline": 373}
+MAX_NEW = {"edit": 160, "baseline": check.max_new_tokens("baseline")}
 
 
 def rows():
