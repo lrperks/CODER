@@ -21,6 +21,13 @@ def test_run_tests_pass_fail_and_order_at_any_worker_count():
         assert vedit.run_tests(jobs, w, sys.executable, RUNNER) == expect, f"workers={w}"
 
 
+def test_fixed_sources_never_time_out_under_concurrency():
+    fixed = [(src, test) for _, src, test in load_fixtures()]
+    jobs = (fixed * 10)[:300]
+    for w in (1, 4, 8):
+        assert vedit.run_tests(jobs, w, sys.executable, RUNNER) == [True] * 300, f"workers={w}"
+
+
 def test_solve_reports_six_fields_per_sample():
     if not MODEL.exists():
         pytest.skip("train edit first")
